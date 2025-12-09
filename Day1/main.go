@@ -24,13 +24,14 @@ func main() {
 	}
 	defer file.Close()
 
-	answer, err := Solve(file)
+	part1, part2, err := Solve(file)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "solve error: %v\n", err)
 		os.Exit(1)
 	}
 
-	fmt.Println(answer)
+	fmt.Printf("Part 1: %d\n", part1)
+	fmt.Printf("Part 2: %d\n", part2)
 }
 
 func resolveInputPath(args []string) string {
@@ -43,10 +44,11 @@ func resolveInputPath(args []string) string {
 	return "input.txt"
 }
 
-func Solve(r io.Reader) (int, error) {
+func Solve(r io.Reader) (int, int, error) {
 	scanner := bufio.NewScanner(r)
 	position := startPosition
-	zeroHits := 0
+	zeroHitsEnd := 0
+	zeroHitsAll := 0
 	lineNumber := 0
 
 	for scanner.Scan() {
@@ -57,14 +59,16 @@ func Solve(r io.Reader) (int, error) {
 		lineNumber++
 
 		if len(line) < 2 {
-			return 0, fmt.Errorf("line %d: rotation too short", lineNumber)
+			return 0, 0, fmt.Errorf("line %d: rotation too short", lineNumber)
 		}
 
 		dir := line[0]
 		steps, err := strconv.Atoi(line[1:])
 		if err != nil {
-			return 0, fmt.Errorf("line %d: invalid distance: %w", lineNumber, err)
+			return 0, 0, fmt.Errorf("line %d: invalid distance: %w", lineNumber, err)
 		}
+
+		zeroHitsAll += countZeroHits(position, steps, dir)
 
 		switch dir {
 		case 'L':
@@ -72,19 +76,19 @@ func Solve(r io.Reader) (int, error) {
 		case 'R':
 			position = mod(position + steps)
 		default:
-			return 0, fmt.Errorf("line %d: invalid direction %q", lineNumber, dir)
+			return 0, 0, fmt.Errorf("line %d: invalid direction %q", lineNumber, dir)
 		}
 
 		if position == 0 {
-			zeroHits++
+			zeroHitsEnd++
 		}
 	}
 
 	if err := scanner.Err(); err != nil {
-		return 0, err
+		return 0, 0, err
 	}
 
-	return zeroHits, nil
+	return zeroHitsEnd, zeroHitsAll, nil
 }
 
 func mod(value int) int {
@@ -93,4 +97,32 @@ func mod(value int) int {
 		value += dialSize
 	}
 	return value
+}
+
+func countZeroHits(position, steps int, dir byte) int {
+	if steps <= 0 {
+		return 0
+	}
+
+	var first int
+	switch dir {
+	case 'L':
+		first = position % dialSize
+		if first == 0 {
+			first = dialSize
+		}
+	case 'R':
+		first = (dialSize - (position % dialSize)) % dialSize
+		if first == 0 {
+			first = dialSize
+		}
+	default:
+		return 0
+	}
+
+	if steps < first {
+		return 0
+	}
+
+	return 1 + (steps-first)/dialSize
 }

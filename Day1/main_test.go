@@ -18,13 +18,35 @@ R14
 L82
 `
 
-	got, err := Solve(strings.NewReader(input))
+	part1, part2, err := Solve(strings.NewReader(input))
 	if err != nil {
 		t.Fatalf("Solve() error = %v", err)
 	}
 
-	const want = 3
-	if got != want {
-		t.Fatalf("Solve() = %d, want %d", got, want)
+	const wantPart1 = 3
+	const wantPart2 = 6
+	if part1 != wantPart1 {
+		t.Fatalf("Solve() part1 = %d, want %d", part1, wantPart1)
+	}
+	if part2 != wantPart2 {
+		t.Fatalf("Solve() part2 = %d, want %d", part2, wantPart2)
+	}
+}
+
+func TestSolveMultiRevolution(t *testing.T) {
+	const input = "R1000\n"
+
+	part1, part2, err := Solve(strings.NewReader(input))
+	if err != nil {
+		t.Fatalf("Solve() error = %v", err)
+	}
+
+	const wantPart1 = 0
+	const wantPart2 = 10
+	if part1 != wantPart1 {
+		t.Fatalf("Solve() part1 = %d, want %d", part1, wantPart1)
+	}
+	if part2 != wantPart2 {
+		t.Fatalf("Solve() part2 = %d, want %d", part2, wantPart2)
 	}
 }
