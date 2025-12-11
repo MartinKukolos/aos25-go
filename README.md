@@ -1,5 +1,7 @@
 # Advent of code 2025 - Go version
 
+Solutions for https://adventofcode.com/2025
+
 - Day 1: Secret Entrance ⭐⭐
 - Day 2: Gift Shop ⭐⭐
 - Day 3: Lobby ⭐⭐
