@@ -12,3 +12,4 @@ Solutions for https://adventofcode.com/2025
 - Day 8: Playground ⭐⭐
 - Day 9: Movie Theater ⭐⭐
 - Day 10: Factory ⭐⭐
+- Day 11: Reactor ⭐⭐
