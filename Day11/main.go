@@ -50,7 +50,13 @@ func Solve(r io.Reader) (int64, int64, error) {
 	// Part 1: paths from "you" to "out"
 	var p1 int64
 	if _, ok := graph["you"]; ok {
-		p1 = countPathsSimple(graph, "you", "out")
+		// Try optimized DAG DP; if cycle detected, fall back to DFS
+		pruned, order, ok := prunedTopo(graph, "you", "out")
+		if ok {
+			p1 = countPathsDAG(pruned, order, "you", "out")
+		} else {
+			p1 = countPathsSimple(graph, "you", "out")
+		}
 	} else {
 		p1 = 0
 	}
@@ -58,7 +64,13 @@ func Solve(r io.Reader) (int64, int64, error) {
 	// Part 2: paths from "svr" to "out" that visit both dac and fft
 	var p2 int64
 	if _, ok := graph["svr"]; ok {
-		p2 = countPathsWithMustVisit(graph, "svr", "out", "dac", "fft")
+		// Try optimized DAG DP with 2-bit mask for dac/fft; fallback to DFS on cycles
+		pruned, order, ok := prunedTopo(graph, "svr", "out")
+		if ok {
+			p2 = countPathsMustVisitDAG(pruned, order, "svr", "out", "dac", "fft")
+		} else {
+			p2 = countPathsWithMustVisit(graph, "svr", "out", "dac", "fft")
+		}
 	} else {
 		p2 = 0
 	}
@@ -156,4 +168,172 @@ func countPathsWithMustVisit(graph map[string][]string, start, goal, mustA, must
 	}
 	dfs(start, false, false)
 	return total
+}
+
+// prunedTopo builds a subgraph containing only nodes reachable from start and
+// that can also reach goal. It then computes a topological order on that
+// subgraph. Returns (subgraph, order, true) if DAG; if a cycle is detected in
+// the pruned subgraph, returns (nil, nil, false).
+func prunedTopo(graph map[string][]string, start, goal string) (map[string][]string, []string, bool) {
+	// 1) Reachable from start (forward BFS)
+	reach := make(map[string]bool)
+	var stack []string
+	stack = append(stack, start)
+	for len(stack) > 0 {
+		u := stack[len(stack)-1]
+		stack = stack[:len(stack)-1]
+		if reach[u] {
+			continue
+		}
+		reach[u] = true
+		for _, v := range graph[u] {
+			if !reach[v] {
+				stack = append(stack, v)
+			}
+		}
+	}
+
+	// 2) Can reach goal (reverse BFS)
+	rev := make(map[string][]string)
+	for u, outs := range graph {
+		for _, v := range outs {
+			rev[v] = append(rev[v], u)
+		}
+		// ensure keys exist
+		if _, ok := rev[u]; !ok {
+			rev[u] = rev[u]
+		}
+	}
+	canReachGoal := make(map[string]bool)
+	stack = stack[:0]
+	stack = append(stack, goal)
+	for len(stack) > 0 {
+		u := stack[len(stack)-1]
+		stack = stack[:len(stack)-1]
+		if canReachGoal[u] {
+			continue
+		}
+		canReachGoal[u] = true
+		for _, p := range rev[u] {
+			if !canReachGoal[p] {
+				stack = append(stack, p)
+			}
+		}
+	}
+
+	// 3) Build pruned subgraph
+	sub := make(map[string][]string)
+	for u := range graph {
+		if !(reach[u] && canReachGoal[u]) {
+			continue
+		}
+		for _, v := range graph[u] {
+			if reach[v] && canReachGoal[v] {
+				sub[u] = append(sub[u], v)
+			}
+		}
+		// ensure node exists even if no outgoing
+		if _, ok := sub[u]; !ok {
+			sub[u] = nil
+		}
+	}
+	if _, ok := sub[start]; !ok {
+		// Start not connected to goal
+		return sub, nil, true // treat as DAG with zero ways; empty order okay
+	}
+
+	// 4) Topological sort (Kahn's algorithm)
+	indeg := make(map[string]int)
+	for u := range sub {
+		indeg[u] = 0
+	}
+	for _, outs := range sub {
+		for _, v := range outs {
+			indeg[v]++
+		}
+	}
+	// queue of zero in-degree nodes
+	q := make([]string, 0, len(indeg))
+	for u, d := range indeg {
+		if d == 0 {
+			q = append(q, u)
+		}
+	}
+	order := make([]string, 0, len(indeg))
+	for i := 0; i < len(q); i++ {
+		u := q[i]
+		order = append(order, u)
+		for _, v := range sub[u] {
+			indeg[v]--
+			if indeg[v] == 0 {
+				q = append(q, v)
+			}
+		}
+	}
+	if len(order) != len(indeg) {
+		// cycle detected in pruned subgraph
+		return nil, nil, false
+	}
+	return sub, order, true
+}
+
+// countPathsDAG counts number of paths from start to goal in a DAG using a
+// topological order.
+func countPathsDAG(graph map[string][]string, order []string, start, goal string) int64 {
+	ways := make(map[string]int64, len(order))
+	ways[start] = 1
+	// process in topological order
+	for _, u := range order {
+		w := ways[u]
+		if w == 0 {
+			continue
+		}
+		for _, v := range graph[u] {
+			ways[v] += w
+		}
+	}
+	return ways[goal]
+}
+
+// countPathsMustVisitDAG counts number of paths from start to goal that visit
+// both mustA and mustB (any order) in a DAG using DP over (node, mask).
+func countPathsMustVisitDAG(graph map[string][]string, order []string, start, goal, mustA, mustB string) int64 {
+	// nodeMask marks if being at node sets a bit
+	bitA := 1
+	bitB := 2
+	nodeMask := func(name string) int {
+		m := 0
+		if name == mustA {
+			m |= bitA
+		}
+		if name == mustB {
+			m |= bitB
+		}
+		return m
+	}
+	// dp[node][mask]
+	dp := make(map[string][4]int64, len(order))
+	// initialize
+	initMask := nodeMask(start)
+	arr := dp[start]
+	arr[initMask] = arr[initMask] + 1
+	dp[start] = arr
+
+	for _, u := range order {
+		cur := dp[u]
+		// propagate for all masks present
+		for mask := 0; mask < 4; mask++ {
+			val := cur[mask]
+			if val == 0 {
+				continue
+			}
+			for _, v := range graph[u] {
+				nm := mask | nodeMask(v)
+				nxt := dp[v]
+				nxt[nm] += val
+				dp[v] = nxt
+			}
+		}
+	}
+	return dp[goal][bitA|bitB]
 }
